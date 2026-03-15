@@ -73,7 +73,8 @@ You should see it appear in terminal A.
 
 3) Exit
 Producer/consumer: Ctrl + C
-Stop all services when done: 
+
+4)Stop all services when done: 
 ````bash
 docker compose down
 `````
