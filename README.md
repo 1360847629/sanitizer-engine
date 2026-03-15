@@ -1,4 +1,4 @@
-# aiEngine
+# Sanitizer Engine
 the AI engine for Cyber job sanitization
 
 ## Run MySQL with Docker Compose
