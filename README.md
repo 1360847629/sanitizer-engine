@@ -77,3 +77,8 @@ Stop all services when done:
 ````bash
 docker compose down
 `````
+
+# File ingress process:
+
+File naming convention:
+userid-filetype-yyyymmddhhmmss.filetype
