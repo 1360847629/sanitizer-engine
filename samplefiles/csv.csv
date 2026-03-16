@@ -1,0 +1,11 @@
+id,timestamp,type,source,level,message,host,port,topic
+log-001,2026-03-15T10:00:00Z,systemlog,sanitizer-engine,INFO,Service started successfully,localhost,9092,systemlog_in
+log-002,2026-03-15T10:01:00Z,systemlog,sanitizer-engine,DEBUG,Processing incoming message,localhost,9092,systemlog_in
+log-003,2026-03-15T10:02:00Z,systemlog,sanitizer-engine,WARN,High memory usage detected,localhost,9092,systemlog_out
+log-004,2026-03-15T10:03:00Z,systemlog,sanitizer-engine,ERROR,Failed to connect to database,localhost,3306,error
+log-005,2026-03-15T10:04:00Z,systemlog,sanitizer-engine,INFO,Database connection restored,localhost,3306,systemlog_out
+log-006,2026-03-15T10:05:00Z,systemlog,sanitizer-engine,DEBUG,Consuming message from topic,localhost,9092,networklog_in
+log-007,2026-03-15T10:06:00Z,systemlog,sanitizer-engine,INFO,Message sanitized successfully,localhost,9092,network_out
+log-008,2026-03-15T10:07:00Z,systemlog,sanitizer-engine,ERROR,Invalid message format received,localhost,9092,error
+log-009,2026-03-15T10:08:00Z,systemlog,sanitizer-engine,INFO,Health check passed,localhost,9092,systemlog_in
+log-010,2026-03-15T10:09:00Z,systemlog,sanitizer-engine,WARN,Retry attempt 1 of 3,localhost,9092,systemlog_out
