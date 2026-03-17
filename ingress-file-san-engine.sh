@@ -5,54 +5,47 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/bin/san_lib.sh"
 source "$SCRIPT_DIR/bin/kafka_lib.sh"
 source "$SCRIPT_DIR/bin/db_lib.sh"
+source "$SCRIPT_DIR/bin/file_lib.sh"
 
 # Configuration
 QUARANTINE_DIR="./quarantine"
 OUTPUT_DIR="./sanitized_output"
+
 mkdir -p "$QUARANTINE_DIR" "$OUTPUT_DIR"
-
-# --- Verification Functions ---
-
-verify_log() {
-    local file=$1
-    local type=$2
-    echo "[*] Verifying $file as $type..."
-
-    case "$type" in
-        PCAP|PCAPNG|CAP)
-            if file "$file" | grep -qiE "capture|pcap"; then return 0; fi
-            ;;
-        JSON)
-            if jq empty "$file" 2>/dev/null; then return 0; fi
-            ;;
-        CSV|LOG)
-            if file "$file" | grep -qi "text"; then return 0; fi
-            ;;
-        EVTX)
-            if head -c 4 "$file" | grep -q "Elf"; then return 0; fi
-            ;;
-        *)
-            echo "[!] Unknown LogType: $type"
-            return 1
-            ;;
-    esac
-    return 1
-}
 
 # --- Main Logic ---
 
-if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <file_path> <LogType>"
-    echo "Example: $0 network.pcap PCAP"
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <file_path>"
+    echo "Example: $0 ./samplefiles/2-log-20260316143059.log"
     exit 1
 fi
 
-FILE_PATH=$1
-TYPE=$2
+FILE_PATH="$1"
+
+if [ ! -f "$FILE_PATH" ]; then
+    echo "[!] File not found: $FILE_PATH"
+    exit 1
+fi
+
+FILENAME="$(basename "$FILE_PATH")"
+
+# Expected: userid-filetype-yyyymmddhhmmss.filetype
+# Capture claimed filetype from the filename and use it as TYPE.
+if [[ "$FILENAME" =~ ^[^-]+-([^-]+)-[0-9]{14}\.[^.]+$ ]]; then
+    TYPE="${BASH_REMATCH[1]}"
+    TYPE="$(printf '%s' "$TYPE" | tr '[:lower:]' '[:upper:]')"
+    echo "[*] Extracted LogType from filename: $TYPE"
+else
+    echo "[!] Invalid filename format: $FILENAME"
+    echo "    Expected: userid-filetype-yyyymmddhhmmss.filetype"
+    #mv "$FILE_PATH" "$QUARANTINE_DIR/"
+    exit 1
+fi
 
 if verify_log "$FILE_PATH" "$TYPE"; then
     SANITIZED_FILE="$OUTPUT_DIR/$(basename "$FILE_PATH")"
-
+    echo "[*] Verification PASSED. Sanitizing $FILE_PATH as type $TYPE"
     case "$TYPE" in
         PCAP|PCAPNG|CAP)
             sanitize_pcap "$FILE_PATH"
@@ -67,8 +60,8 @@ if verify_log "$FILE_PATH" "$TYPE"; then
             send_file_to_topic "$SANITIZED_FILE" "systemlog_in"
             ;;
         *)
-            echo "[!] Unknown LogType: $TYPE"
-            return 1
+            echo "[!] Unknown LogType from filename: $TYPE"
+            exit 1
             ;;
     esac
 else

@@ -1,13 +1,21 @@
 #!/bin/bash
 
+# Resolve project paths
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$LIB_DIR/.." && pwd)"
+
 # Kafka defaults (override with env vars if needed)
 : "${KAFKA_BOOTSTRAP_SERVER:=localhost:9092}"
-: "${KAFKA_USE_DOCKER_COMPOSE:=true}"   # true|false
-: "${KAFKA_SERVICE_NAME:=kafka}"         # compose service name
+: "${KAFKA_USE_DOCKER_COMPOSE:=true}"            # true|false
+: "${KAFKA_SERVICE_NAME:=kafka}"                 # compose service name
+: "${KAFKA_COMPOSE_FILE:=$PROJECT_ROOT/dev/docker-compose.yml}"
 
 kafka_topic_for_type() {
-    local type="${1^^}"     # uppercase
-    local direction="${2,,}" # lowercase: in|out
+    local type
+    type="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+    local direction
+    direction="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+
     case "$type:$direction" in
         SYSTEMLOG:in)   echo "systemlog_in" ;;
         SYSTEMLOG:out)  echo "systemlog_out" ;;
@@ -21,10 +29,12 @@ kafka_topic_for_type() {
 _kafka_producer_cmd() {
     local topic="$1"
     if [[ "$KAFKA_USE_DOCKER_COMPOSE" == "true" ]]; then
-        # for local compose setup
-        echo "docker compose exec -T $KAFKA_SERVICE_NAME kafka-console-producer --bootstrap-server kafka:29092 --topic $topic"
+        if [[ -f "$KAFKA_COMPOSE_FILE" ]]; then
+            echo "docker compose -f \"$KAFKA_COMPOSE_FILE\" exec -T $KAFKA_SERVICE_NAME kafka-console-producer --bootstrap-server kafka:29092 --topic $topic"
+        else
+            echo "docker compose exec -T $KAFKA_SERVICE_NAME kafka-console-producer --bootstrap-server kafka:29092 --topic $topic"
+        fi
     else
-        # for native/local kafka cli
         echo "kafka-console-producer --bootstrap-server $KAFKA_BOOTSTRAP_SERVER --topic $topic"
     fi
 }

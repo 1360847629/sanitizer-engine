@@ -82,3 +82,5 @@ docker compose down
 
 File naming convention:
 userid-filetype-yyyymmddhhmmss.filetype
+
+./ingress-file-san-engine.sh samplefiles/2-csv-20260316221533.csv

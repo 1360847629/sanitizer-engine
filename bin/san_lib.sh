@@ -22,7 +22,7 @@ sanitize_text() {
     # 2. Mask IPv4 addresses (Example: 192.168.x.x -> 192.168.MASK.MASK)
     # 3. Remove known sensitive keywords (case-insensitive)
     sed -E 's/([0-9]{1,3}\.[0-9]{1,3})\.[0-9]{1,3}\.[0-9]{1,3}/\1.XXX.XXX/g' "$in" | \
-    sed -Ei 's/(password|passwd|token|auth|secret)=[^ ]*/\1=REDACTED/gI' | \
+    sed -E 's/(password|passwd|token|auth|secret)=[^ ]*/\1=REDACTED/gI' | \
     tr -d '\r' > "$out"
     echo "[+] Text log sanitized: $out"
 }
