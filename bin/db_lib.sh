@@ -56,11 +56,17 @@ job_request_export_blob() {
   local out_file="$2"
   [[ -z "$id" || -z "$out_file" ]] && { echo "[!] usage: job_request_export_blob <id> <out_file>"; return 1; }
 
-  local hex
-  hex="$(db_exec "SELECT HEX(file_content) FROM job_request WHERE id = $id;")"
-  [[ -z "$hex" ]] && { echo "[!] no record/blob found for id=$id"; return 1; }
+  local b64
+  b64="$(db_exec "SELECT TO_BASE64(file_content) FROM job_request WHERE id = $id;")"
+  b64="$(printf "%s" "$b64" | tr -d '\r\n\t ')"
+  [[ -z "$b64" ]] && { echo "[!] no record/blob found for id=$id"; return 1; }
 
-  printf "%s" "$hex" | xxd -r -p > "$out_file"
+  if base64 --help 2>/dev/null | grep -q -- '--decode'; then
+    printf "%s" "$b64" | base64 --decode > "$out_file"
+  else
+    printf "%s" "$b64" | base64 -D > "$out_file"
+  fi
+
   echo "[+] exported blob to $out_file"
 }
 
@@ -81,8 +87,8 @@ job_request_insert() {
 
   [[ ! -f "$file_path" ]] && { echo "[!] file not found: $file_path"; return 1; }
 
-  local hex
-  hex="$(xxd -p "$file_path" | tr -d '\n')"
+  local b64
+  b64="$(base64 < "$file_path" | tr -d '\r\n')"
 
   content_type="$(sql_escape "$content_type")"
   status="$(sql_escape "$status")"
@@ -94,7 +100,7 @@ job_request_insert() {
   db_exec "INSERT INTO job_request
     (file_content, file_content_content_type, score, status, file_type, request_type, priority, file_name, user_id)
     VALUES
-    (X'$hex', '$content_type', $score, '$status', '$file_type', '$request_type', '$priority', '$file_name', $user_id);"
+    (FROM_BASE64('$b64'), '$content_type', $score, '$status', '$file_type', '$request_type', '$priority', '$file_name', $user_id);"
 
   echo "[+] inserted job_request for file: $file_name"
 }
