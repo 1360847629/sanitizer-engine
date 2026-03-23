@@ -12,8 +12,9 @@ DB_PASSWORD="${DB_PASSWORD:-password}"
 
 run_mysql() {
   local sql="$1"
-  mysql --protocol=TCP \
-    -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -D "$DB_NAME" -p"$DB_PASSWORD" \
+  MYSQL_PWD="$DB_PASSWORD" mysql --protocol=TCP \
+    -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -D "$DB_NAME" \
+    --batch --raw --skip-column-names \
     -e "$sql"
 }
 
