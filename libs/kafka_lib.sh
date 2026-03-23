@@ -1,91 +1,148 @@
 #!/bin/bash
 
-# Resolve project paths
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$LIB_DIR/.." && pwd)"
+set -o pipefail
 
-# Kafka defaults (override with env vars if needed)
-: "${KAFKA_BOOTSTRAP_SERVER:=localhost:9092}"
-: "${KAFKA_USE_DOCKER_COMPOSE:=true}"            # true|false
-: "${KAFKA_SERVICE_NAME:=kafka}"                 # compose service name
-: "${KAFKA_COMPOSE_FILE:=$PROJECT_ROOT/dev/docker-compose.yml}"
+KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
+INPUT_TOPIC="${INPUT_TOPIC:-sanitizer_in}"
+MESSAGE_ORIGIN="${MESSAGE_ORIGIN:-$(hostname)}"
+MESSAGE_SOURCE="${MESSAGE_SOURCE:-manual}"
+MESSAGE_TYPE="${MESSAGE_TYPE:-base64_payload}"
+CONTENT_ENCODING="${CONTENT_ENCODING:-base64}"
 
-kafka_topic_for_type() {
-    local type
-    type="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
-    local direction
-    direction="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
-
-    case "$type:$direction" in
-        SYSTEMLOG:in)   echo "systemlog_in" ;;
-        SYSTEMLOG:out)  echo "systemlog_out" ;;
-        NETWORKLOG:in)  echo "networklog_in" ;;
-        NETWORKLOG:out) echo "network_out" ;;
-        ERROR:*)        echo "error" ;;
-        *)              return 1 ;;
-    esac
+cleanup() {
+  rm -f /dev/shm/tmp_* 2>/dev/null || true
 }
 
-_kafka_producer_cmd() {
-    local topic="$1"
-    if [[ "$KAFKA_USE_DOCKER_COMPOSE" == "true" ]]; then
-        if [[ -f "$KAFKA_COMPOSE_FILE" ]]; then
-            echo "docker compose -f \"$KAFKA_COMPOSE_FILE\" exec -T $KAFKA_SERVICE_NAME kafka-console-producer --bootstrap-server kafka:29092 --topic $topic"
-        else
-            echo "docker compose exec -T $KAFKA_SERVICE_NAME kafka-console-producer --bootstrap-server kafka:29092 --topic $topic"
-        fi
-    else
-        echo "kafka-console-producer --bootstrap-server $KAFKA_BOOTSTRAP_SERVER --topic $topic"
-    fi
+trap cleanup EXIT
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
 }
 
-send_line_to_topic() {
-    local topic="$1"
-    local line="$2"
-
-    [[ -z "$topic" || -z "$line" ]] && return 1
-    local cmd
-    cmd="$(_kafka_producer_cmd "$topic")"
-
-    printf '%s\n' "$line" | eval "$cmd" >/dev/null
+read_payload() {
+  if [[ $# -gt 0 ]]; then
+    printf '%s' "$1"
+  elif [[ ! -t 0 ]]; then
+    cat
+  else
+    return 1
+  fi
 }
 
-send_file_to_topic() {
-    local file_path="$1"
-    local topic="$2"
+validate_base64() {
+  local payload="$1"
 
-    [[ ! -f "$file_path" ]] && { echo "[!] File not found: $file_path"; return 1; }
-    [[ -z "$topic" ]] && { echo "[!] Topic is required"; return 1; }
+  printf '%s' "$payload" | python3 -c '
+import sys
+import base64
+import binascii
 
-    local cmd
-    cmd="$(_kafka_producer_cmd "$topic")"
+data = sys.stdin.read().strip()
+if not data:
+    sys.exit(1)
 
-    cat "$file_path" | eval "$cmd" >/dev/null
-    echo "[+] Sent file to topic: $topic ($file_path)"
+try:
+    base64.b64decode(data, validate=True)
+    sys.exit(0)
+except (binascii.Error, ValueError):
+    sys.exit(1)
+'
 }
 
-send_json_to_topic() {
-    local file_path="$1"
-    local topic="$2"
+utc_timestamp() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
 
-    [[ ! -f "$file_path" ]] && { echo "[!] File not found: $file_path"; return 1; }
-    [[ -z "$topic" ]] && { echo "[!] Topic is required"; return 1; }
+generate_message_id() {
+  openssl rand -hex 16
+}
 
-    if ! command -v jq >/dev/null 2>&1; then
-        echo "[!] jq is required for JSON send"
-        return 1
-    fi
+build_message() {
+  local payload="$1"
+  local topic="$2"
+  local origin="$3"
+  local source="$4"
+  local msg_type="$5"
+  local timestamp
+  local message_id
+  local payload_length
 
-    local cmd
-    cmd="$(_kafka_producer_cmd "$topic")"
+  timestamp="$(utc_timestamp)"
+  message_id="$(generate_message_id)"
+  payload_length="$(printf '%s' "$payload" | wc -c | tr -d ' ')"
 
-    # If JSON array => send each element as one message
-    # If JSON object => send single compact object
-    if jq -e 'type=="array"' "$file_path" >/dev/null 2>&1; then
-        jq -c '.[]' "$file_path" | eval "$cmd" >/dev/null
-    else
-        jq -c '.' "$file_path" | eval "$cmd" >/dev/null
-    fi
+  jq -cn \
+    --arg id "$message_id" \
+    --arg time "$timestamp" \
+    --arg topic "$topic" \
+    --arg origin "$origin" \
+    --arg source "$source" \
+    --arg type "$msg_type" \
+    --arg encoding "$CONTENT_ENCODING" \
+    --arg payload "$payload" \
+    --argjson payload_length "$payload_length" \
+    '{
+      metadata: {
+        id: $id,
+        time: $time,
+        topic: $topic,
+        origin: $origin,
+        source: $source,
+        type: $type,
+        encoding: $encoding,
+        payload_length: $payload_length
+      },
+      payload: $payload
+    }'
+}
 
-    echo "[+] Sent JSON to topic: $topic ($file_path)"
+publish_message() {
+  local topic="$1"
+  local json_message="$2"
+
+  printf '%s\n' "$json_message" | kcat -P -b "$KAFKA_BOOTSTRAP_SERVERS" -t "$topic"
+}
+# --- Kafka Consumer ---
+consume_messages() {
+  local topic="$1"
+  local timeout="${2:-$CONSUME_TIMEOUT}"
+  local max_messages="${3:-$CONSUME_MAX_MESSAGES}"
+
+  kcat \
+    -C \
+    -b "$KAFKA_BOOTSTRAP_SERVERS" \
+    -t "$topic" \
+    -o end \
+    -e \
+    -q \
+    -c "$max_messages" \
+    -r "$timeout" \
+    2>/dev/null
+}
+# --- Pretty Print a consumed JSON message ---
+pretty_print_message() {
+  local raw="$1"
+
+  if ! echo "$raw" | jq . 2>/dev/null; then
+    echo "[WARN] Non-JSON message received:" >&2
+    echo "$raw"
+  fi
+}
+
+# --- Decode payload field from a consumed JSON message ---
+decode_payload() {
+  local json="$1"
+  local payload
+
+  payload="$(echo "$json" | jq -r '.payload // empty')"
+
+  if [[ -z "$payload" ]]; then
+    echo "[WARN] No payload field found in message" >&2
+    return 1
+  fi
+
+  printf '%s' "$payload" | base64 -d
 }
