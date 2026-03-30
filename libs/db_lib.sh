@@ -9,6 +9,27 @@ DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-user}"
 DB_PASSWORD="${DB_PASSWORD:-password}"
+# Initial States
+declare -r STATUS_PENDING="PENDING"
+declare -r STATUS_QUEUED="QUEUED"
+
+# Security & Preparation
+declare -r STATUS_SANITIZING="SANITIZING"
+declare -r STATUS_SANITIZED="SANITIZED"
+declare -r STATUS_FAILED_SANITIZATION="FAILED_SANITIZATION"
+
+# Execution
+declare -r STATUS_IN_PROGRESS="IN_PROGRESS"
+declare -r STATUS_RETRYING="RETRYING"
+
+# Final States
+declare -r STATUS_COMPLETED="COMPLETED"
+declare -r STATUS_COMPLETED_WITH_WARNINGS="COMPLETED_WITH_WARNINGS"
+declare -r STATUS_ERROR="ERROR"
+declare -r STATUS_CANCELLED="CANCELLED"
+
+# Usage Example:
+current_status=$STATUS_PENDING
 
 run_mysql() {
   local sql="$1"

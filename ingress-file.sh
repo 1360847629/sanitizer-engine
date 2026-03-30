@@ -2,10 +2,10 @@
 
 # Source sanitization library
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/bin/san_lib.sh"
-source "$SCRIPT_DIR/bin/kafka_lib.sh"
-source "$SCRIPT_DIR/bin/db_lib.sh"
-source "$SCRIPT_DIR/bin/file_lib.sh"
+source "$SCRIPT_DIR/libs/san_lib.sh"
+source "$SCRIPT_DIR/libs/kafka_lib.sh"
+source "$SCRIPT_DIR/libs/db_lib.sh"
+source "$SCRIPT_DIR/libs/file_lib.sh"
 
 # Configuration
 QUARANTINE_DIR="./quarantine"
