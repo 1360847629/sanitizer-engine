@@ -2,12 +2,31 @@
 set -o pipefail
 # Configuration
 RULES_FILE="./sanitizer_rules.yar"
-RAM_BASE="/dev/shm/sanitizer_engine"
+TMP_BASE="${SANITIZER_TMP_BASE:-/tmp/sanitizer_engine}"
+
+decode_base64_to_file() {
+    local out_file="$1"
+
+    # GNU base64 (Linux)
+    if printf '' | base64 -d >/dev/null 2>&1; then
+        base64 -d > "$out_file"
+        return $?
+    fi
+
+    # BSD base64 (macOS)
+    if printf '' | base64 -D >/dev/null 2>&1; then
+        base64 -D > "$out_file"
+        return $?
+    fi
+
+    # Fallback
+    openssl base64 -d -A > "$out_file"
+}
 
 # --- Sanitization Functions ---
 sanitize_message() {
-    # Ensure the RAM base directory exists
-    mkdir -p "$RAM_BASE"
+    # Ensure the filesystem temp base exists (macOS + Linux)
+    mkdir -p "$TMP_BASE"
 
     # Input JSON from Kafka or Command Line
     local INPUT_JSON="$1"
@@ -34,15 +53,23 @@ sanitize_message() {
     RAW_PAYLOAD="$(echo "$INPUT_JSON" | jq -r '.payload')"
     update_job_request_status "$JOB_ID" "$STATUS_SANITIZING"
 
-    # Create a job-specific isolation folder in RAM
-    local JOB_DIR="$RAM_BASE/job_$JOB_ID"
+    # Create a job-specific isolation folder on filesystem temp
+    local SAFE_JOB_ID
+    SAFE_JOB_ID="$(printf '%s' "$JOB_ID" | tr -cd '[:alnum:]_.-')"
+    [ -z "$SAFE_JOB_ID" ] && SAFE_JOB_ID="unknown"
+
+    local JOB_DIR
+    JOB_DIR="$(mktemp -d "${TMP_BASE%/}/job_${SAFE_JOB_ID}_XXXXXX")" || return 1
+
     local RAW_FILE="$JOB_DIR/raw_input"
     local CLEAN_FILE="$JOB_DIR/cleaned_output"
 
-    mkdir -p "$JOB_DIR"
-
-    # 2. Decode Base64 to RAM
-    echo "$RAW_PAYLOAD" | base64 -d > "$RAW_FILE"
+    # 2. Decode Base64 to filesystem temp
+    if ! printf '%s' "$RAW_PAYLOAD" | decode_base64_to_file "$RAW_FILE"; then
+        update_job_request_status "$JOB_ID" "$STATUS_FAILED_SANITIZATION"
+        rm -rf "$JOB_DIR"
+        return 1
+    fi
 
     # Prefer file_type from metadata, fallback to MIME detection
     MIME="${FILE_TYPE:-$(file -b --mime-type "$RAW_FILE" 2>/dev/null || echo "text/plain")}"
@@ -86,11 +113,10 @@ sanitize_message() {
         "$MIME" \
         "$FILE_NAME")"
 
-    # Add extra info (line 68-70 behavior)
     echo "$REBUILT_JSON" | jq \
-        '.status = "SANITIZED" | .engine = "rocky-linux-shm"'
+        '.status = "SANITIZED" | .engine = "portable-fs"'
 
-    # 6. Cleanup RAM immediately
+    # 6. Cleanup temp files immediately
     rm -rf "$JOB_DIR"
     return 0
 }
