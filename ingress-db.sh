@@ -49,14 +49,14 @@ json_message="$(build_message \
   "$INPUT_TOPIC" \
   "$MESSAGE_ORIGIN" \
   "$MESSAGE_SOURCE" \
-  "$MESSAGE_TYPE" \
+  "$CONTENT_TYPE" \
   "$JOB_ID")"
 
 publish_message "$INPUT_TOPIC" "$json_message"
 
 echo "Published message to topic: $INPUT_TOPIC"
 # also log the message meta information such as timestamp, origin,  etc.
-echo "Message meta: origin=$MESSAGE_ORIGIN, source=$MESSAGE_SOURCE, type=$MESSAGE_TYPE"
+echo "Message meta: origin=$MESSAGE_ORIGIN, source=$MESSAGE_SOURCE, type=$CONTENT_TYPE"
 
 #update_job_request_status "$JOB_ID" "$SANITIZING"
 
