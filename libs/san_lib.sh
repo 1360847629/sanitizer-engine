@@ -18,7 +18,7 @@ sanitize_message() {
     local MIME
     local RAW_PAYLOAD
 
-    JOB_ID="$(echo "$INPUT_JSON" | jq -r '.job_id // "unknown"')"
+    JOB_ID="$(echo "$INPUT_JSON" | jq -r '.metadata.job_id // "unknown"')"
     MIME="$(echo "$INPUT_JSON" | jq -r '.content_type // "text/plain"')"
     RAW_PAYLOAD="$(echo "$INPUT_JSON" | jq -r '.payload')"
     echo "Processing Job ID: $JOB_ID with MIME type: $MIME"
