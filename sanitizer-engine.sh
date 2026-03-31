@@ -29,7 +29,7 @@ source "libs/kafka_lib.sh"
    echo "Received message: $msg"
   if sanitized_msg="$(sanitize_message "$msg")"; then
     [[ -z "$sanitized_msg" ]] && continue
-    publish_message "$AIENGINE_TOPIC_IN" "$sanitized_msg"
+    printf '%s' "$sanitized_msg" | publish_message "$AIENGINE_TOPIC_IN"
     echo "Published sanitized message to topic: $AIENGINE_TOPIC_IN"
   fi
  done
