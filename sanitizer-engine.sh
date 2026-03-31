@@ -18,7 +18,7 @@ YARA_RULES="${YARA_RULES:-/app/rules/rules.yar}"
 
 
 trap 'rm -f /dev/shm/tmp_*' EXIT
-
+source "libs/db_lib.sh"
 source "libs/san_lib.sh"
 source "libs/kafka_lib.sh"
 # Main loop: consume from Kafka topic

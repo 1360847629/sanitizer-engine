@@ -1,6 +1,5 @@
 #!/bin/bash
-source "db_lib.sh"
-
+set -o pipefail
 # Configuration
 RULES_FILE="./sanitizer_rules.yar"
 RAM_BASE="/dev/shm/sanitizer_engine"
