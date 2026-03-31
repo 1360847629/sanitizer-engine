@@ -40,7 +40,7 @@ sanitize_message() {
 
     if [ -n "$SCAN_LOG" ]; then
         echo "{\"job_id\": \"$JOB_ID\", \"status\": \"REJECTED\", \"threat\": \"$SCAN_LOG\"}"
-        update_job_request_status "$JOB_ID" "$STATUS_REJECTED"
+        update_job_request_status "$JOB_ID" "$STATUS_FAILED_SANITIZATION"
         rm -rf "$JOB_DIR"
         exit 1
     fi

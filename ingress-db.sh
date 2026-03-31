@@ -49,7 +49,8 @@ json_message="$(build_message \
   "$INPUT_TOPIC" \
   "$MESSAGE_ORIGIN" \
   "$MESSAGE_SOURCE" \
-  "$MESSAGE_TYPE")"
+  "$MESSAGE_TYPE" \
+  "$JOB_ID")"
 
 publish_message "$INPUT_TOPIC" "$json_message"
 
@@ -83,5 +84,3 @@ echo "$consumed_message"
 
 echo "Pretty-printed message:"
 pretty_print_message "$consumed_message"
-
-#

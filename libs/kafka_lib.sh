@@ -68,6 +68,7 @@ build_message() {
   local origin="$3"
   local source="$4"
   local msg_type="$5"
+  local job_id="${6:-}"
   local timestamp
   local message_id
   local payload_length
@@ -83,6 +84,7 @@ build_message() {
     --arg origin "$origin" \
     --arg source "$source" \
     --arg type "$msg_type" \
+    --arg job_id "$job_id" \
     --arg encoding "$CONTENT_ENCODING" \
     --arg payload "$payload" \
     --argjson payload_length "$payload_length" \
@@ -94,6 +96,7 @@ build_message() {
         origin: $origin,
         source: $source,
         type: $type,
+        job_id: $job_id,
         encoding: $encoding,
         payload_length: $payload_length
       },
@@ -107,6 +110,7 @@ publish_message() {
 
   printf '%s\n' "$json_message" | kcat -P -b "$KAFKA_BOOTSTRAP_SERVERS" -t "$topic"
 }
+
 # --- Kafka Consumer ---
 consume_messages() {
   local topic="$1"
@@ -123,6 +127,7 @@ consume_messages() {
     -c "$max_messages" \
     2>/dev/null
 }
+
 # --- Pretty Print a consumed JSON message ---
 pretty_print_message() {
   local raw="$1"
