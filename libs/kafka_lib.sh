@@ -69,6 +69,8 @@ build_message() {
   local source="$4"
   local msg_type="$5"
   local job_id="${6:-}"
+  local file_type="${7:-}"
+  local file_name="${8:-}"
   local timestamp
   local message_id
   local payload_length
@@ -85,6 +87,8 @@ build_message() {
     --arg source "$source" \
     --arg type "$msg_type" \
     --arg job_id "$job_id" \
+    --arg file_type "$file_type" \
+    --arg file_name "$file_name" \
     --arg encoding "$CONTENT_ENCODING" \
     --arg payload "$payload" \
     --argjson payload_length "$payload_length" \
@@ -97,6 +101,8 @@ build_message() {
         source: $source,
         type: $type,
         job_id: $job_id,
+        file_type: $file_type,
+        file_name: $file_name,
         encoding: $encoding,
         payload_length: $payload_length
       },

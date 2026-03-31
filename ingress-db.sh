@@ -49,8 +49,10 @@ json_message="$(build_message \
   "$INPUT_TOPIC" \
   "$MESSAGE_ORIGIN" \
   "$MESSAGE_SOURCE" \
+  "$MESSAGE_TYPE" \
+  "$JOB_ID" \
   "$CONTENT_TYPE" \
-  "$JOB_ID")"
+  "$FILE_NAME")"
 
 publish_message "$INPUT_TOPIC" "$json_message"
 
