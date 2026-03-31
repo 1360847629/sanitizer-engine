@@ -8,6 +8,8 @@ MESSAGE_ORIGIN="${MESSAGE_ORIGIN:-$(hostname)}"
 MESSAGE_SOURCE="${MESSAGE_SOURCE:-manual}"
 MESSAGE_TYPE="${MESSAGE_TYPE:-base64_payload}"
 CONTENT_ENCODING="${CONTENT_ENCODING:-base64}"
+CONSUME_TIMEOUT="${CONSUME_TIMEOUT:-5000}"
+CONSUME_MAX_MESSAGES="${CONSUME_MAX_MESSAGES:-1}"
 
 cleanup() {
   rm -f /dev/shm/tmp_* 2>/dev/null || true
@@ -115,11 +117,10 @@ consume_messages() {
     -C \
     -b "$KAFKA_BOOTSTRAP_SERVERS" \
     -t "$topic" \
-    -o end \
+    -o -1 \
     -e \
     -q \
     -c "$max_messages" \
-    -r "$timeout" \
     2>/dev/null
 }
 # --- Pretty Print a consumed JSON message ---
