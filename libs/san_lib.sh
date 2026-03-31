@@ -21,8 +21,6 @@ sanitize_message() {
     JOB_ID="$(echo "$INPUT_JSON" | jq -r '.metadata.job_id // "unknown"')"
     MIME="$(echo "$INPUT_JSON" | jq -r '.content_type // "text/plain"')"
     RAW_PAYLOAD="$(echo "$INPUT_JSON" | jq -r '.payload')"
-    echo "Processing Job ID: $JOB_ID with MIME type: $MIME"
-    echo "jobid: $JOB_ID, status: $STATUS_SANITIZING, mime: $MIME"
     update_job_request_status "$JOB_ID" "$STATUS_SANITIZING"
     # Create a job-specific isolation folder in RAM
     local JOB_DIR="$RAM_BASE/job_$JOB_ID"
@@ -41,7 +39,6 @@ sanitize_message() {
 
     if [ -n "$SCAN_LOG" ]; then
         echo "{\"job_id\": \"$JOB_ID\", \"status\": \"REJECTED\", \"threat\": \"$SCAN_LOG\"}"
-        echo update_job_request_status "$JOB_ID" "$STATUS_FAILED_SANITIZATION"
         update_job_request_status "$JOB_ID" "$STATUS_FAILED_SANITIZATION"
         rm -rf "$JOB_DIR"
         exit 1
@@ -74,7 +71,6 @@ sanitize_message() {
 
     # 6. Cleanup RAM immediately
     rm -rf "$JOB_DIR"
-    echo update_job_request_status "$JOB_ID" "$STATUS_SANITIZED"
     update_job_request_status "$JOB_ID" "$STATUS_SANITIZED"
     return 0
 }
