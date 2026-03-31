@@ -23,13 +23,10 @@ source "libs/db_lib.sh"
 source "libs/san_lib.sh"
 source "libs/kafka_lib.sh"
 # Main loop: consume from Kafka topic
- consume_messages "$INPUT_TOPIC" 10000 1 | while read -r msg; do
-   [[ -z "$msg" ]] && continue
-   sanitize_message "$msg"
-   echo "Received message: $msg"
-  if sanitized_msg="$(sanitize_message "$msg")"; then
-    [[ -z "$sanitized_msg" ]] && continue
-    printf '%s' "$sanitized_msg" | publish_message "$AIENGINE_TOPIC_IN"
-    echo "Published sanitized message to topic: $AIENGINE_TOPIC_IN"
-  fi
- done
+ $msg="$(consume_messages "$INPUT_TOPIC" 10000 1)"
+ sanitize_message "$msg"
+ echo "Received message: $msg"
+ sanitized_msg="$(sanitize_message "$msg")"
+ printf '%s' "$sanitized_msg" | publish_message "$AIENGINE_TOPIC_IN"
+ echo "Published sanitized message to topic: $AIENGINE_TOPIC_IN"
+
