@@ -24,6 +24,62 @@ decode_base64_to_file() {
 }
 
 # --- Sanitization Functions ---
+sanitize_base64() {
+    # Ensure the filesystem temp base exists (macOS + Linux)
+    mkdir -p "$TMP_BASE"
+
+    local RAW_PAYLOAD="$1"
+    local SAFE_JOB_ID=$2 
+    local MIME=$3
+    update_job_request_status "$SAFE_JOB_ID" "$STATUS_SANITIZING"
+
+    local JOB_DIR="$(mktemp -d "${TMP_BASE%/}/job_${SAFE_JOB_ID}_XXXXXX")" || return 1
+
+    local RAW_FILE="$JOB_DIR/raw_input"
+    local CLEAN_FILE="$JOB_DIR/cleaned_output"
+
+    # 2. Decode Base64 to filesystem temp
+    if ! printf '%s' "$RAW_PAYLOAD" | decode_base64_to_file "$RAW_FILE"; then
+        update_job_request_status "$SAFE_JOB_ID" "$STATUS_FAILED_SANITIZATION"
+        rm -rf "$JOB_DIR"
+        return 1
+    fi
+
+    # 3. YARA Security Scan
+    local SCAN_LOG
+    SCAN_LOG="$(yara "$RULES_FILE" "$RAW_FILE" 2>/dev/null)"
+
+    if [ -n "$SCAN_LOG" ]; then
+        echo "{\"job_id\": \"$JOB_ID\", \"status\": \"REJECTED\", \"threat\": \"$SCAN_LOG\"}"
+        update_job_request_status "$SAFE_JOB_ID" "$STATUS_FAILED_SANITIZATION"
+        rm -rf "$JOB_DIR"
+        return 1
+    fi
+
+    # 4. Content Disarm and Reconstruction (CDR)
+    case "$MIME" in
+        image/jpeg|image/png)
+            convert "$RAW_FILE" -strip "$CLEAN_FILE"
+            ;;
+        application/pdf)
+            qpdf --linearize "$RAW_FILE" "$CLEAN_FILE" >/dev/null 2>&1
+            ;;
+        *)
+            tr -d '\000-\011\013\014\016-\037' < "$RAW_FILE" > "$CLEAN_FILE"
+            ;;
+    esac
+
+    local CLEAN_PAYLOAD
+    CLEAN_PAYLOAD="$(base64 < "$CLEAN_FILE" | tr -d '\n')"
+    echo "$CLEAN_PAYLOAD"
+    update_job_request_status "$SAFE_JOB_ID" "$STATUS_SANITIZED"
+
+    rm -rf "$JOB_DIR"
+    return 0
+}
+
+
+
 sanitize_message() {
     # Ensure the filesystem temp base exists (macOS + Linux)
     mkdir -p "$TMP_BASE"

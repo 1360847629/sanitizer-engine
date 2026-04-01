@@ -3,7 +3,7 @@
 set -o pipefail
 
 KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
-INPUT_TOPIC="${INPUT_TOPIC:-sanitizer_in}"
+INPUT_TOPIC="${INPUT_TOPIC:-aiengine_in}"
 MESSAGE_ORIGIN="${MESSAGE_ORIGIN:-$(hostname)}"
 MESSAGE_SOURCE="${MESSAGE_SOURCE:-manual}"
 MESSAGE_TYPE="${MESSAGE_TYPE:-base64_payload}"
