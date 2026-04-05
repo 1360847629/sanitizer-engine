@@ -17,11 +17,6 @@ declare -r STATUS_QUEUED="QUEUED"
 declare -r STATUS_SANITIZING="SANITIZING"
 declare -r STATUS_SANITIZED="SANITIZED"
 declare -r STATUS_FAILED_SANITIZATION="FAILED_SANITIZATION"
-#AI Engine Processing
-declare -r STATUS_AI_PROCESSING_PENDING="AI_PROCESSING_PENDING"
-
-declare -r STATUS_AI_PROCESSING="AI_PROCESSING"
-declare -r STATUS_AI_PROCESSED="AI_PROCESSED"
 
 # Execution
 declare -r STATUS_IN_PROGRESS="IN_PROGRESS"
@@ -77,6 +72,7 @@ read_latest_job_request() {
         COALESCE(file_content_content_type, ''),
         REPLACE(TO_BASE64(file_content), '\n', '')
       FROM job_request
+      WHERE status = '${STATUS_PENDING}'
       ORDER BY id DESC
       LIMIT 1;
     "
@@ -98,5 +94,49 @@ update_job_request_status() {
     UPDATE job_request
     SET status = '$status'
     WHERE id = ${job_id};
+  "
+}
+insert_job_execution_log() {
+  local status="$1"
+  local execution_log="$2"
+  local job_request_id="$3"
+
+  # 1. Validation
+  if [[ ! "$job_request_id" =~ ^[0-9]+$ ]]; then
+    echo "insert_job_execution_log: job_request_id must be numeric" >&2
+    return 1
+  fi
+
+  # 2. Manual Escaping (Basic protection for single quotes)
+  local status_esc execution_log_esc
+  status_esc="${status//\'/\'\'}"
+  execution_log_esc="${execution_log//\'/\'\'}"
+
+  # 3. Logic: Determine if we should set an end_time
+  # You can expand this list based on your specific status names
+  local end_time_val="NULL"
+  if [[ "$status" =~ ^(COMPLETED|FAILED|CANCELLED)$ ]]; then
+    end_time_val="NOW(6)"
+  fi
+
+  # 4. Pure Insert (New record every time)
+  run_mysql "
+    INSERT INTO job_execution_report (
+      start_time,
+      end_time,
+      execution_log,
+      status,
+      job_request_id,
+      user_id
+    )
+    SELECT
+      NOW(6),
+      ${end_time_val},
+      '${execution_log_esc}',
+      '${status_esc}',
+      jr.id,
+      jr.user_id
+    FROM job_request jr
+    WHERE jr.id = ${job_request_id};
   "
 }

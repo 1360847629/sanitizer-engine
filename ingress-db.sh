@@ -16,10 +16,10 @@ source "${SCRIPT_DIR}/libs/san_lib.sh"
 ## the following line are for testing purposes, it should be removed once the test is over
 ## or it should be moved to a separate test script
 # Encode file once
-B64_DATA="$(base64 < "$FILE" | tr -d '\n')"
+#B64_DATA="$(base64 < "$FILE" | tr -d '\n')"
 
 # there should be echo statement here to log the progress to the logs
-insert_job_request "$B64_DATA"
+#insert_job_request "$B64_DATA"
 #end of testing code, the following lines should be in the main script to continuously read from the database and process the job requests
 
 # Read the latest job request. In final product, it should only reading pending requests.
@@ -39,10 +39,12 @@ if [[ -z "${FILE_CONTENT_B64:-}" ]]; then
   echo "Empty blob content for job_request.id=${JOB_ID}" >&2
   # The job request should be updated to COMPLETED_WITH_WARNINGS if the blob content is empty.
   update_job_request_status "$JOB_ID" "$STATUS_COMPLETED_WITH_WARNINGS"
-  # the job execution log should be updated to include the warning message about empty blob content.
+  insert_job_execution_log "$STATUS_COMPLETED_WITH_WARNINGS" "Empty blob content for job_request.id=${JOB_ID}" "$JOB_ID"
+  exit 0
 fi
 
 echo "job_id=${JOB_ID} file_name=${FILE_NAME} content_type=${CONTENT_TYPE}"
+insert_job_execution_log "$STATUS_SANITIZING" "Started sanitizing job_request.id=${JOB_ID}" "$JOB_ID"
 sanitized_msg="$(sanitize_base64 "$FILE_CONTENT_B64" "$JOB_ID" "$CONTENT_TYPE")"
 echo "Sanitized message: $sanitized_msg"
 # Build the message and publish to Kafka Sanitizer Input Topic
@@ -62,8 +64,10 @@ publish_message "$INPUT_TOPIC" "$json_message"
 echo "Published message to topic: $INPUT_TOPIC"
 # also log the message meta information such as timestamp, origin,  etc.
 echo "Message meta: origin=$MESSAGE_ORIGIN, source=$MESSAGE_SOURCE, type=$CONTENT_TYPE"
+insert_job_execution_log "$STATUS_SANITIZING" "Published message to topic: $INPUT_TOPIC with meta: origin=$MESSAGE_ORIGIN, source=$MESSAGE_SOURCE, type=$MESSAGE_TYPE" "$JOB_ID"
 echo "Pretty-printed message:"
 pretty_print_message "$json_message"
 
 update_job_request_status "$JOB_ID" "$STATUS_AI_PROCESSING_PENDING"
 echo "Updated job_request.id=${JOB_ID} status to $STATUS_AI_PROCESSING_PENDING"
+insert_job_execution_log "$STATUS_SANITIZING" "Updated job_request.id=${JOB_ID} status to $STATUS_SANITIZING" "$JOB_ID"
