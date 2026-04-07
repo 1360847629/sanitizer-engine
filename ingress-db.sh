@@ -2,8 +2,8 @@
 set -euo pipefail
 set -o pipefail
 
-FILE="samplescript/2-csv-20260316221533.csv"
-DB_NAME="sanitizer_db"
+#FILE="samplescript/2-csv-20260316221533.csv"
+#DB_NAME="sanitizer_db"
 PRIORITY="1"
 USER_ID="2"
 FILE_NAME="$(basename "$FILE")"
