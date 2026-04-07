@@ -1,73 +1,93 @@
 #!/bin/bash
 set -euo pipefail
-set -o pipefail
 
-#FILE="samplescript/2-csv-20260316221533.csv"
-#DB_NAME="sanitizer_db"
 PRIORITY="1"
 USER_ID="2"
-#FILE_NAME="$(basename "$FILE")"
+: "${POLL_INTERVAL:=5}"
+: "${STATUS_AI_PROCESSING_PENDING:=AI_PROCESSING_PENDING}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../libs/db_lib.sh
 source "${SCRIPT_DIR}/libs/db_lib.sh"
 source "${SCRIPT_DIR}/libs/kafka_lib.sh"
 source "${SCRIPT_DIR}/libs/san_lib.sh"
 
-## the following line are for testing purposes, it should be removed once the test is over
-## or it should be moved to a separate test script
-# Encode file once
-#B64_DATA="$(base64 < "$FILE" | tr -d '\n')"
+trap 'rm -f /dev/shm/tmp_*' EXIT
 
-# there should be echo statement here to log the progress to the logs
-#insert_job_request "$B64_DATA"
-#end of testing code, the following lines should be in the main script to continuously read from the database and process the job requests
+# Process one pending job from job_request.
+# Returns 0 if a job was found and processed (success or error), 1 if no pending jobs exist.
+process_pending_job() {
+  local ROW
+  ROW="$(read_latest_job_request)" || return 1
 
-# Read the latest job request. In final product, it should only reading pending requests.
+  if [[ -z "$ROW" ]]; then
+    return 1
+  fi
 
-ROW="$(read_latest_job_request)"
+  local JOB_ID FILE_NAME CONTENT_TYPE FILE_CONTENT_B64
+  IFS=$'\t' read -r JOB_ID FILE_NAME CONTENT_TYPE FILE_CONTENT_B64 <<< "$ROW"
 
-if [[ -z "$ROW" ]]; then
-  echo "No rows found in job_request" >&2
-  exit 1
-fi
+  update_job_request_status "$JOB_ID" "$STATUS_SANITIZING"
 
-# at this line, the status should be updated to SANITIZING
+  if [[ -z "${FILE_CONTENT_B64:-}" ]]; then
+    echo "Empty blob content for job_request.id=${JOB_ID}" >&2
+    update_job_request_status "$JOB_ID" "$STATUS_COMPLETED_WITH_WARNINGS"
+    insert_job_execution_log "$STATUS_COMPLETED_WITH_WARNINGS" "Empty blob content for job_request.id=${JOB_ID}" "$JOB_ID"
+    return 0
+  fi
 
-IFS=$'\t' read -r JOB_ID FILE_NAME CONTENT_TYPE FILE_CONTENT_B64 <<< "$ROW"
+  echo "job_id=${JOB_ID} file_name=${FILE_NAME} content_type=${CONTENT_TYPE}"
+  insert_job_execution_log "$STATUS_SANITIZING" "Started sanitizing job_request.id=${JOB_ID}" "$JOB_ID"
 
-if [[ -z "${FILE_CONTENT_B64:-}" ]]; then
-  echo "Empty blob content for job_request.id=${JOB_ID}" >&2
-  # The job request should be updated to COMPLETED_WITH_WARNINGS if the blob content is empty.
-  update_job_request_status "$JOB_ID" "$STATUS_COMPLETED_WITH_WARNINGS"
-  insert_job_execution_log "$STATUS_COMPLETED_WITH_WARNINGS" "Empty blob content for job_request.id=${JOB_ID}" "$JOB_ID"
-  exit 0
-fi
+  local sanitized_msg
+  if ! sanitized_msg="$(sanitize_base64 "$FILE_CONTENT_B64" "$JOB_ID" "$CONTENT_TYPE")"; then
+    echo "Sanitization failed for job_request.id=${JOB_ID}" >&2
+    update_job_request_status "$JOB_ID" "$STATUS_ERROR"
+    insert_job_execution_log "$STATUS_ERROR" "Sanitization failed for job_request.id=${JOB_ID}" "$JOB_ID"
+    return 0
+  fi
 
-echo "job_id=${JOB_ID} file_name=${FILE_NAME} content_type=${CONTENT_TYPE}"
-insert_job_execution_log "$STATUS_SANITIZING" "Started sanitizing job_request.id=${JOB_ID}" "$JOB_ID"
-sanitized_msg="$(sanitize_base64 "$FILE_CONTENT_B64" "$JOB_ID" "$CONTENT_TYPE")"
-echo "Sanitized message: $sanitized_msg"
-# Build the message and publish to Kafka Sanitizer Input Topic
+  echo "Sanitized message: $sanitized_msg"
 
-json_message="$(build_message \
-  "$sanitized_msg" \
-  "$INPUT_TOPIC" \
-  "$MESSAGE_ORIGIN" \
-  "$MESSAGE_SOURCE" \
-  "$MESSAGE_TYPE" \
-  "$JOB_ID" \
-  "$CONTENT_TYPE" \
-  "$FILE_NAME")"
+  local json_message
+  if ! json_message="$(build_message \
+    "$sanitized_msg" \
+    "$INPUT_TOPIC" \
+    "$MESSAGE_ORIGIN" \
+    "$MESSAGE_SOURCE" \
+    "$MESSAGE_TYPE" \
+    "$JOB_ID" \
+    "$CONTENT_TYPE" \
+    "$FILE_NAME")"; then
+    echo "Failed to build message for job_request.id=${JOB_ID}" >&2
+    update_job_request_status "$JOB_ID" "$STATUS_ERROR"
+    insert_job_execution_log "$STATUS_ERROR" "Failed to build message for job_request.id=${JOB_ID}" "$JOB_ID"
+    return 0
+  fi
 
-publish_message "$INPUT_TOPIC" "$json_message"
+  if ! publish_message "$INPUT_TOPIC" "$json_message"; then
+    echo "Failed to publish message for job_request.id=${JOB_ID}" >&2
+    update_job_request_status "$JOB_ID" "$STATUS_ERROR"
+    insert_job_execution_log "$STATUS_ERROR" "Failed to publish message to topic: $INPUT_TOPIC for job_request.id=${JOB_ID}" "$JOB_ID"
+    return 0
+  fi
 
-echo "Published message to topic: $INPUT_TOPIC"
-# also log the message meta information such as timestamp, origin,  etc.
-echo "Message meta: origin=$MESSAGE_ORIGIN, source=$MESSAGE_SOURCE, type=$CONTENT_TYPE"
-insert_job_execution_log "$STATUS_SANITIZING" "Published message to topic: $INPUT_TOPIC with meta: origin=$MESSAGE_ORIGIN, source=$MESSAGE_SOURCE, type=$MESSAGE_TYPE" "$JOB_ID"
-echo "Pretty-printed message:"
-pretty_print_message "$json_message"
+  echo "Published message to topic: $INPUT_TOPIC"
+  echo "Message meta: origin=$MESSAGE_ORIGIN, source=$MESSAGE_SOURCE, type=$CONTENT_TYPE"
+  insert_job_execution_log "$STATUS_SANITIZING" "Published message to topic: $INPUT_TOPIC with meta: origin=$MESSAGE_ORIGIN, source=$MESSAGE_SOURCE, type=$MESSAGE_TYPE" "$JOB_ID"
+  echo "Pretty-printed message:"
+  pretty_print_message "$json_message"
 
-update_job_request_status "$JOB_ID" "$STATUS_AI_PROCESSING_PENDING"
-echo "Updated job_request.id=${JOB_ID} status to $STATUS_AI_PROCESSING_PENDING"
-insert_job_execution_log "$STATUS_SANITIZING" "Updated job_request.id=${JOB_ID} status to $STATUS_SANITIZING" "$JOB_ID"
+  update_job_request_status "$JOB_ID" "$STATUS_AI_PROCESSING_PENDING"
+  echo "Updated job_request.id=${JOB_ID} status to $STATUS_AI_PROCESSING_PENDING"
+  insert_job_execution_log "$STATUS_SANITIZING" "Updated job_request.id=${JOB_ID} status to $STATUS_AI_PROCESSING_PENDING" "$JOB_ID"
+}
+
+echo "[*] Starting ingress-db monitor (poll interval: ${POLL_INTERVAL}s)..."
+
+while true; do
+  if ! process_pending_job; then
+    echo "[*] No pending jobs. Sleeping ${POLL_INTERVAL}s..."
+    sleep "$POLL_INTERVAL"
+  fi
+done
