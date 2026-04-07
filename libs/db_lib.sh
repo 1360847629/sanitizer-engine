@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 # If true, run mysql inside docker compose service "db"
 : "${DB_USE_DOCKER_COMPOSE:=false}"
 : "${DB_SERVICE_NAME:=db}"
@@ -9,6 +8,8 @@ DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-user}"
 DB_PASSWORD="${DB_PASSWORD:-password}"
+DB_NAME="${DB_NAME:-CyberClinic}"
+
 # Initial States
 declare -r STATUS_PENDING="PENDING"
 declare -r STATUS_QUEUED="QUEUED"
