@@ -6,7 +6,7 @@ set -o pipefail
 #DB_NAME="sanitizer_db"
 PRIORITY="1"
 USER_ID="2"
-FILE_NAME="$(basename "$FILE")"
+#FILE_NAME="$(basename "$FILE")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../libs/db_lib.sh
 source "${SCRIPT_DIR}/libs/db_lib.sh"
